@@ -15,3 +15,11 @@ body {
   font-weight: 600;
   font-family: Verdana, Geneva, Tahoma, sans-serif;
 }
+
+.active .cell:empty {
+  background: #eeffe9;
+}
+
+.active .cell:empty:hover {
+  background: #fff;
+}

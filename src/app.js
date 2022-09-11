@@ -2,6 +2,20 @@ import { Client } from 'boardgame.io/client';
 import { SocketIO } from 'boardgame.io/multiplayer'
 import { TicTacToe } from './game';
 
+function SplashScreen(rootElement) {
+  return new Promise((resolve) => {
+    const createButton = (playerID) => {
+      const button = document.createElement('button');
+      button.textContent = 'Player ' + playerID;
+      button.onclick = () => resolve(playerID);
+      rootElement.append(button);
+    };
+    rootElement.innerHTML = ` <p>Play as</p>`;
+    const playerIDs = ['0', '1'];
+    playerIDs.forEach(createButton);
+  });
+}
+
 class TicTacToeClient {
   constructor(rootElement, { playerID } = {}) {
     this.client = Client({
@@ -9,11 +23,25 @@ class TicTacToeClient {
       multiplayer: SocketIO({ server: 'localhost:8000' }),
       playerID,
     });
+    this.connected = false;
     this.client.start();
     this.rootElement = rootElement;
+    this.client.subscribe(state => this.update(state));
+  }
+
+  onConnecting() {
+    this.connected = false;
+    this.showConnecting();
+  }
+
+  onConnected() {
+    this.connected = true;
     this.createBoard();
     this.attachListeners();
-    this.client.subscribe(state => this.update(state));
+  }
+
+  showConnecting() {
+    this.rootElement.innerHTML = '<p>connecting…</p>';
   }
 
   createBoard() {
@@ -31,32 +59,39 @@ class TicTacToeClient {
     // Add the HTML to our app <div>.
     // We’ll use the empty <p> to display the game winner later.
     this.rootElement.innerHTML = `
+      <h3>Player ${this.client.playerID}</h3>
       <table>${rows.join('')}</table>
       <p class="winner"></p>
     `;
   }
 
   attachListeners() {
+    // Attach the event listener to each of the board cells.
+    const cells = this.rootElement.querySelectorAll('.cell');
     // This event handler will read the cell id from a cell’s
     // `data-id` attribute and make the `clickCell` move.
     const handleCellClick = event => {
-      const id = parseInt(event.target.dataset.id);
+      const id = parseInt(event.target.dataset.id, 10);
       this.client.moves.clickCell(id);
     };
-    // Attach the event listener to each of the board cells.
-    const cells = this.rootElement.querySelectorAll('.cell');
     cells.forEach(cell => {
       cell.onclick = handleCellClick;
     });
   }
 
   update(state) {
-    if (state === null) return;
+    if (state === null) {
+      this.onConnecting();
+      return;
+    } else if (!this.connected) {
+      this.onConnected();
+    }
+
     // Get all the board cells.
     const cells = this.rootElement.querySelectorAll('.cell');
     // Update cells to display the values in game state.
     cells.forEach(cell => {
-      const cellId = parseInt(cell.dataset.id);
+      const cellId = parseInt(cell.dataset.id, 10);
       const cellValue = state.G.cells[cellId];
       cell.textContent = cellValue !== null ? cellValue : '';
     });
@@ -69,17 +104,25 @@ class TicTacToeClient {
           ? 'Winner: ' + state.ctx.gameover.winner
           : 'Draw!';
     } else {
-      messageEl.textContent = '';
+      const { currentPlayer } = state.ctx;
+      messageEl.textContent = `It's player ${currentPlayer}'s turn`;
+      if (currentPlayer === this.client.playerID) {
+        this.rootElement.classList.add('active');
+      } else {
+        this.rootElement.classList.remove('active');
+      }
     }
   }
 
 };
 
+class App {
+  constructor(rootElement) {
+    this.client = SplashScreen(rootElement).then((playerID) => {
+      return new TicTacToeClient(rootElement, { playerID });
+    });
+  }
+}
+
 const appElement = document.getElementById('app');
-const playerIDs = ['0', '1'];
-const clients = playerIDs.map(playerID => {
-  const rootElement = document.createElement('div');
-  appElement.append(rootElement);
-  return new TicTacToeClient(rootElement, { playerID });
-});
-const app = new TicTacToeClient(appElement);
+new App(appElement);
